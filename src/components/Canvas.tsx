@@ -476,7 +476,7 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // ── Collab ───────────────────────────────────────────────────────────────────
-  const { active: collabActive, remoteUsers, pushCursor, pushElements, setOnRemoteElements } = useCollabStore()
+  const { active: collabActive, remoteUsers, pushCursor, pushElements, setOnRemoteElements, setGetLocalElements } = useCollabStore()
   const isApplyingRemote = useRef(false)
 
   // Inline text input state
@@ -593,6 +593,14 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
       isApplyingRemote.current = false
     })
   }, [setOnRemoteElements])
+
+  useEffect(() => {
+    setGetLocalElements(() => {
+      const state = useBoardStore.getState()
+      const board = state.boards.find((b) => b.id === state.activeBoardId)
+      return board?.elements ?? []
+    })
+  }, [setGetLocalElements])
 
   // ── Collab: broadcast local element changes to peers ─────────────────────────
   useEffect(() => {

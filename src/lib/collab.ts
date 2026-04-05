@@ -43,7 +43,10 @@ export async function createSession(
     board_name: boardName,
     elements,
   })
-  if (error) { console.error('createSession:', error.message); return null }
+  // Fallback: keep realtime collaboration available even when DB session table is missing.
+  if (error) {
+    console.warn('createSession fallback (db unavailable):', error.message)
+  }
   return shareCode
 }
 
@@ -71,10 +74,14 @@ export async function saveSessionElements(
 ): Promise<void> {
   if (!isSupabaseEnabled) return
   const supabase = getSupabaseClient()!
-  await supabase
+  const { error } = await supabase
     .from(SESSION_TABLE)
     .update({ elements, updated_at: new Date().toISOString() })
     .eq('share_code', shareCode)
+  if (error) {
+    // Ignore persistence errors so realtime collab keeps working.
+    return
+  }
 }
 
 // ── Realtime channel helpers ──────────────────────────────────────────────────

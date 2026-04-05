@@ -5,7 +5,7 @@ import {
   CollabUser, randomColor,
   createSession,
   getCollabChannel, broadcastElements, broadcastCursor,
-  saveSessionElements, loadSession,
+  saveSessionElements,
 } from '../lib/collab'
 
 interface CollabStore {
@@ -29,6 +29,9 @@ interface CollabStore {
   /** Subscribe handler – called by Canvas when remote elements arrive */
   onRemoteElements: ((elements: CanvasElement[]) => void) | null
   setOnRemoteElements: (cb: (elements: CanvasElement[]) => void) => void
+  /** Local state provider used to answer sync requests */
+  getLocalElements: (() => CanvasElement[]) | null
+  setGetLocalElements: (cb: () => CanvasElement[]) => void
   /** Stop collab and cleanup */
   stopSession: () => void
 }
@@ -62,8 +65,10 @@ export const useCollabStore = create<CollabStore>((set, get) => {
     remoteUsers: [],
     channel: null,
     onRemoteElements: null,
+    getLocalElements: null,
 
     setOnRemoteElements: (cb) => set({ onRemoteElements: cb }),
+    setGetLocalElements: (cb) => set({ getLocalElements: cb }),
 
     startSession: async (ownerEmail, boardId, boardName, elements) => {
       console.log('[collab] startSession', ownerEmail, boardId)
@@ -74,19 +79,21 @@ export const useCollabStore = create<CollabStore>((set, get) => {
       if (!channel) { console.error('[collab] getCollabChannel returned null (Supabase disabled?)'); return null }
       subscribeChannel(channel, localUser.id, set, get)
       set({ active: true, shareCode, localUser, channel })
+      // Prime channel with current elements so newly-joined peers can sync quickly.
+      broadcastElements(channel, elements, localUser.id)
       console.log('[collab] session started, code:', shareCode)
       return shareCode
     },
 
     joinSession: async (shareCode, guestName) => {
-      const session = await loadSession(shareCode)
-      if (!session) return null
       const localUser = { id: makeUserId(), name: guestName, color: randomColor() }
       const channel = getCollabChannel(shareCode)
-      if (!channel) return session.elements
+      if (!channel) return null
       subscribeChannel(channel, localUser.id, set, get)
       set({ active: true, shareCode, localUser, channel })
-      return session.elements
+      // Ask peers for a full snapshot when joining.
+      void channel.send({ type: 'broadcast', event: 'request-sync', payload: { userId: localUser.id } })
+      return []
     },
 
     pushElements: (elements) => {
@@ -131,6 +138,14 @@ function subscribeChannel(
           return [...users, { id: userId, name, color, cursor: { x, y } }]
         })(),
       })
+    })
+    .on('broadcast', { event: 'request-sync' }, ({ payload }) => {
+      const { userId } = payload as { userId: string }
+      if (userId === localUserId) return
+      const getter = get().getLocalElements
+      if (!getter) return
+      const elements = getter()
+      broadcastElements(channel, elements, localUserId)
     })
     .subscribe()
 }
