@@ -10,7 +10,7 @@ const FEATURES = [
 ]
 
 export default function LandingPage() {
-  const { login, signup, loginGuest } = useAuthStore()
+  const { login, signup, loginGuest, authError } = useAuthStore()
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -28,10 +28,10 @@ export default function LandingPage() {
     if (mode === 'signup') {
       if (!name.trim()) { setError('Enter your name.'); setLoading(false); return }
       const ok = await signup(email, password, name)
-      if (!ok) setError('This email is already in use.')
+      if (!ok) setError(authError ?? 'Signup failed.')
     } else {
       const ok = await login(email, password)
-      if (!ok) setError('Incorrect email or password.')
+      if (!ok) setError(authError ?? 'Login failed.')
     }
     setLoading(false)
   }
