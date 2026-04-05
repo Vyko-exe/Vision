@@ -6,7 +6,6 @@ import {
 import useImage from 'use-image'
 import Konva from 'konva'
 import { useBoardStore } from '../store/useBoardStore'
-import { useCollabStore } from '../store/useCollabStore'
 import { CanvasImage, CanvasGroup, CanvasText, CanvasElement } from '../types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -19,37 +18,6 @@ function haveIntersection(
   b: { x: number; y: number; width: number; height: number }
 ) {
   return !(b.x > a.x + a.width || b.x + b.width < a.x || b.y > a.y + a.height || b.y + b.height < a.y)
-}
-
-async function optimizeImageFile(file: File): Promise<string> {
-  return new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const src = ev.target?.result as string
-      const img = new window.Image()
-      img.onload = () => {
-        const MAX_SIDE = 1000
-        const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height))
-        const w = Math.max(1, Math.round(img.width * scale))
-        const h = Math.max(1, Math.round(img.height * scale))
-        const canvas = document.createElement('canvas')
-        canvas.width = w
-        canvas.height = h
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          resolve(src)
-          return
-        }
-        ctx.drawImage(img, 0, 0, w, h)
-        const optimized = canvas.toDataURL('image/webp', 0.82)
-        resolve(optimized)
-      }
-      img.onerror = () => resolve(src)
-      img.src = src
-    }
-    reader.onerror = () => resolve('')
-    reader.readAsDataURL(file)
-  })
 }
 
 interface DragCallbacks {
@@ -506,10 +474,6 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
   const layerRef    = useRef<Konva.Layer>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // ── Collab ───────────────────────────────────────────────────────────────────
-  const { active: collabActive, remoteUsers, pushCursor, pushElements, setOnRemoteElements, setGetLocalElements } = useCollabStore()
-  const isApplyingRemote = useRef(false)
-
   // Inline text input state
   const [textInput, setTextInput] = useState<{
     canvasX: number; canvasY: number; screenX: number; screenY: number
@@ -611,38 +575,6 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-
-  // ── Collab: receive remote element updates ───────────────────────────────────
-  useEffect(() => {
-    setOnRemoteElements((elements) => {
-      isApplyingRemote.current = true
-      useBoardStore.setState((state) => ({
-        boards: state.boards.map((b) =>
-          b.id === state.activeBoardId ? { ...b, elements } : b
-        ),
-      }))
-      isApplyingRemote.current = false
-    })
-  }, [setOnRemoteElements])
-
-  useEffect(() => {
-    setGetLocalElements(() => {
-      const state = useBoardStore.getState()
-      const board = state.boards.find((b) => b.id === state.activeBoardId)
-      return board?.elements ?? []
-    })
-  }, [setGetLocalElements])
-
-  // ── Collab: broadcast local element changes to peers ─────────────────────────
-  useEffect(() => {
-    if (!collabActive) return
-    const unsub = useBoardStore.subscribe((state) => {
-      if (isApplyingRemote.current) return
-      const board = state.boards.find((b) => b.id === state.activeBoardId)
-      if (board) pushElements(board.elements)
-    })
-    return unsub
-  }, [collabActive, pushElements])
 
   const alignSelection = () => {
     if (selectedElementIds.length < 2) return
@@ -836,25 +768,28 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
       e.preventDefault()
       const file = imageItem.getAsFile()
       if (!file) return
-      const src = await optimizeImageFile(file)
-      if (!src) return
-      const img = new window.Image()
-      img.onload = () => {
-        const maxW = 600
-        const s = img.width > maxW ? maxW / img.width : 1
-        const cx = (stageSize.width  / 2 - stagePos.x) / stageScale
-        const cy = (stageSize.height / 2 - stagePos.y) / stageScale
-        useBoardStore.getState().addElement({
-          id: Date.now().toString() + Math.random(),
-          type: 'image',
-          x: cx - (img.width * s) / 2,
-          y: cy - (img.height * s) / 2,
-          width: img.width * s,
-          height: img.height * s,
-          src,
-        })
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const src = ev.target?.result as string
+        const img = new window.Image()
+        img.onload = () => {
+          const maxW = 600
+          const s = img.width > maxW ? maxW / img.width : 1
+          const cx = (stageSize.width  / 2 - stagePos.x) / stageScale
+          const cy = (stageSize.height / 2 - stagePos.y) / stageScale
+          useBoardStore.getState().addElement({
+            id: Date.now().toString() + Math.random(),
+            type: 'image',
+            x: cx - (img.width * s) / 2,
+            y: cy - (img.height * s) / 2,
+            width: img.width * s,
+            height: img.height * s,
+            src,
+          })
+        }
+        img.src = src
       }
-      img.src = src
+      reader.readAsDataURL(file)
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
@@ -867,16 +802,19 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
     const box = stage.container().getBoundingClientRect()
     const x = (e.clientX - box.left  - stagePos.x) / stageScale
     const y = (e.clientY - box.top   - stagePos.y) / stageScale
-    Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/')).forEach(async (file) => {
-      const src = await optimizeImageFile(file)
-      if (!src) return
-      const img = new window.Image()
-      img.onload = () => {
-        const maxW = 600
-        const s = img.width > maxW ? maxW / img.width : 1
-        addElement({ id: Date.now().toString() + Math.random(), type: 'image', x, y, width: img.width * s, height: img.height * s, src })
+    Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/')).forEach((file) => {
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        const src = ev.target?.result as string
+        const img = new window.Image()
+        img.onload = () => {
+          const maxW = 600
+          const s = img.width > maxW ? maxW / img.width : 1
+          addElement({ id: Date.now().toString() + Math.random(), type: 'image', x, y, width: img.width * s, height: img.height * s, src })
+        }
+        img.src = src
       }
-      img.src = src
+      reader.readAsDataURL(file)
     })
   }, [addElement, stagePos, stageScale])
 
@@ -1040,10 +978,6 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
 
   // ── Mouse move ───────────────────────────────────────────────────────────────
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
-    if (collabActive) {
-      const pos = stageRef.current?.getPointerPosition()
-      if (pos) pushCursor((pos.x - stagePos.x) / stageScale, (pos.y - stagePos.y) / stageScale)
-    }
     if (isPanning.current) {
       const dx = e.evt.clientX - lastPointer.current.x
       const dy = e.evt.clientY - lastPointer.current.y
@@ -1379,28 +1313,6 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
           </div>
         )
       })()}
-
-      {/* Remote cursors overlay */}
-      {collabActive && remoteUsers.map((user) => user.cursor && (
-        <div
-          key={user.id}
-          className="absolute pointer-events-none z-30"
-          style={{
-            left: user.cursor.x * stageScale + stagePos.x,
-            top: user.cursor.y * stageScale + stagePos.y,
-          }}
-        >
-          <svg width="12" height="16" viewBox="0 0 12 16" fill="none">
-            <path d="M0 0 L0 12 L3.4 9.2 L5.5 14.5 L6.8 14 L4.8 8.7 L9 8.7 Z" fill={user.color} stroke="rgba(0,0,0,0.5)" strokeWidth="0.8" />
-          </svg>
-          <div
-            className="absolute top-3 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium text-white whitespace-nowrap shadow-lg"
-            style={{ background: user.color }}
-          >
-            {user.name}
-          </div>
-        </div>
-      ))}
 
       {/* Inline text input */}
       {textInput && (() => {
