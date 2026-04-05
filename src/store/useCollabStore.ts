@@ -3,6 +3,7 @@ import { RealtimeChannel } from '@supabase/supabase-js'
 import { CanvasElement } from '../types'
 import {
   CollabUser, randomColor,
+  createSession,
   getCollabChannel, broadcastElements, broadcastCursor,
   saveSessionElements, loadSession,
 } from '../lib/collab'
@@ -65,14 +66,15 @@ export const useCollabStore = create<CollabStore>((set, get) => {
     setOnRemoteElements: (cb) => set({ onRemoteElements: cb }),
 
     startSession: async (ownerEmail, boardId, boardName, elements) => {
-      const { createSession } = await import('../lib/collab')
+      console.log('[collab] startSession', ownerEmail, boardId)
       const shareCode = await createSession(ownerEmail, boardId, boardName, elements)
-      if (!shareCode) return null
+      if (!shareCode) { console.error('[collab] createSession returned null'); return null }
       const localUser = { id: makeUserId(), name: ownerEmail.split('@')[0], color: randomColor() }
       const channel = getCollabChannel(shareCode)
-      if (!channel) return null
+      if (!channel) { console.error('[collab] getCollabChannel returned null (Supabase disabled?)'); return null }
       subscribeChannel(channel, localUser.id, set, get)
       set({ active: true, shareCode, localUser, channel })
+      console.log('[collab] session started, code:', shareCode)
       return shareCode
     },
 

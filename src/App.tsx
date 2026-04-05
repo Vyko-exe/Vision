@@ -43,12 +43,16 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
     if (!user) return
     const board = useBoardStore.getState().boards.find((b) => b.id === useBoardStore.getState().activeBoardId)
     if (!board) return
+    setShareTooltip('Création...')
     const code = await startSession(user.email, board.id, board.name, board.elements)
     if (code) {
       const url = `${window.location.origin}?join=${code}`
       await navigator.clipboard.writeText(url).catch(() => undefined)
       setShareTooltip('Lien copié !')
-      setTimeout(() => setShareTooltip(null), 2000)
+      setTimeout(() => setShareTooltip(null), 2500)
+    } else {
+      setShareTooltip('Erreur — voir console')
+      setTimeout(() => setShareTooltip(null), 3000)
     }
   }
 
