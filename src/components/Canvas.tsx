@@ -21,6 +21,37 @@ function haveIntersection(
   return !(b.x > a.x + a.width || b.x + b.width < a.x || b.y > a.y + a.height || b.y + b.height < a.y)
 }
 
+async function optimizeImageFile(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const src = ev.target?.result as string
+      const img = new window.Image()
+      img.onload = () => {
+        const MAX_SIDE = 1000
+        const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height))
+        const w = Math.max(1, Math.round(img.width * scale))
+        const h = Math.max(1, Math.round(img.height * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          resolve(src)
+          return
+        }
+        ctx.drawImage(img, 0, 0, w, h)
+        const optimized = canvas.toDataURL('image/webp', 0.82)
+        resolve(optimized)
+      }
+      img.onerror = () => resolve(src)
+      img.src = src
+    }
+    reader.onerror = () => resolve('')
+    reader.readAsDataURL(file)
+  })
+}
+
 interface DragCallbacks {
   onDragStart: (id: string, x: number, y: number) => void
   onDragMove:  (id: string, x: number, y: number) => void
@@ -805,28 +836,25 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
       e.preventDefault()
       const file = imageItem.getAsFile()
       if (!file) return
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const src = ev.target?.result as string
-        const img = new window.Image()
-        img.onload = () => {
-          const maxW = 600
-          const s = img.width > maxW ? maxW / img.width : 1
-          const cx = (stageSize.width  / 2 - stagePos.x) / stageScale
-          const cy = (stageSize.height / 2 - stagePos.y) / stageScale
-          useBoardStore.getState().addElement({
-            id: Date.now().toString() + Math.random(),
-            type: 'image',
-            x: cx - (img.width * s) / 2,
-            y: cy - (img.height * s) / 2,
-            width: img.width * s,
-            height: img.height * s,
-            src,
-          })
-        }
-        img.src = src
+      const src = await optimizeImageFile(file)
+      if (!src) return
+      const img = new window.Image()
+      img.onload = () => {
+        const maxW = 600
+        const s = img.width > maxW ? maxW / img.width : 1
+        const cx = (stageSize.width  / 2 - stagePos.x) / stageScale
+        const cy = (stageSize.height / 2 - stagePos.y) / stageScale
+        useBoardStore.getState().addElement({
+          id: Date.now().toString() + Math.random(),
+          type: 'image',
+          x: cx - (img.width * s) / 2,
+          y: cy - (img.height * s) / 2,
+          width: img.width * s,
+          height: img.height * s,
+          src,
+        })
       }
-      reader.readAsDataURL(file)
+      img.src = src
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
@@ -839,19 +867,16 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
     const box = stage.container().getBoundingClientRect()
     const x = (e.clientX - box.left  - stagePos.x) / stageScale
     const y = (e.clientY - box.top   - stagePos.y) / stageScale
-    Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/')).forEach((file) => {
-      const reader = new FileReader()
-      reader.onload = (ev) => {
-        const src = ev.target?.result as string
-        const img = new window.Image()
-        img.onload = () => {
-          const maxW = 600
-          const s = img.width > maxW ? maxW / img.width : 1
-          addElement({ id: Date.now().toString() + Math.random(), type: 'image', x, y, width: img.width * s, height: img.height * s, src })
-        }
-        img.src = src
+    Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/')).forEach(async (file) => {
+      const src = await optimizeImageFile(file)
+      if (!src) return
+      const img = new window.Image()
+      img.onload = () => {
+        const maxW = 600
+        const s = img.width > maxW ? maxW / img.width : 1
+        addElement({ id: Date.now().toString() + Math.random(), type: 'image', x, y, width: img.width * s, height: img.height * s, src })
       }
-      reader.readAsDataURL(file)
+      img.src = src
     })
   }, [addElement, stagePos, stageScale])
 
