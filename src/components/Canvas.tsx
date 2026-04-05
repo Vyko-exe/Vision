@@ -6,6 +6,7 @@ import {
 import useImage from 'use-image'
 import Konva from 'konva'
 import { useBoardStore } from '../store/useBoardStore'
+import { useCollabStore } from '../store/useCollabStore'
 import { CanvasImage, CanvasGroup, CanvasText, CanvasElement } from '../types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -474,6 +475,10 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
   const layerRef    = useRef<Konva.Layer>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
+  // ── Collab ───────────────────────────────────────────────────────────────────
+  const { active: collabActive, remoteUsers, pushCursor, pushElements, setOnRemoteElements } = useCollabStore()
+  const isApplyingRemote = useRef(false)
+
   // Inline text input state
   const [textInput, setTextInput] = useState<{
     canvasX: number; canvasY: number; screenX: number; screenY: number
@@ -575,6 +580,30 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
+
+  // ── Collab: receive remote element updates ───────────────────────────────────
+  useEffect(() => {
+    setOnRemoteElements((elements) => {
+      isApplyingRemote.current = true
+      useBoardStore.setState((state) => ({
+        boards: state.boards.map((b) =>
+          b.id === state.activeBoardId ? { ...b, elements } : b
+        ),
+      }))
+      isApplyingRemote.current = false
+    })
+  }, [setOnRemoteElements])
+
+  // ── Collab: broadcast local element changes to peers ─────────────────────────
+  useEffect(() => {
+    if (!collabActive) return
+    const unsub = useBoardStore.subscribe((state) => {
+      if (isApplyingRemote.current) return
+      const board = state.boards.find((b) => b.id === state.activeBoardId)
+      if (board) pushElements(board.elements)
+    })
+    return unsub
+  }, [collabActive, pushElements])
 
   const alignSelection = () => {
     if (selectedElementIds.length < 2) return
@@ -978,6 +1007,10 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
 
   // ── Mouse move ───────────────────────────────────────────────────────────────
   const handleMouseMove = (e: Konva.KonvaEventObject<MouseEvent>) => {
+    if (collabActive) {
+      const pos = stageRef.current?.getPointerPosition()
+      if (pos) pushCursor((pos.x - stagePos.x) / stageScale, (pos.y - stagePos.y) / stageScale)
+    }
     if (isPanning.current) {
       const dx = e.evt.clientX - lastPointer.current.x
       const dy = e.evt.clientY - lastPointer.current.y
@@ -1313,6 +1346,28 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
           </div>
         )
       })()}
+
+      {/* Remote cursors overlay */}
+      {collabActive && remoteUsers.map((user) => user.cursor && (
+        <div
+          key={user.id}
+          className="absolute pointer-events-none z-30"
+          style={{
+            left: user.cursor.x * stageScale + stagePos.x,
+            top: user.cursor.y * stageScale + stagePos.y,
+          }}
+        >
+          <svg width="12" height="16" viewBox="0 0 12 16" fill="none">
+            <path d="M0 0 L0 12 L3.4 9.2 L5.5 14.5 L6.8 14 L4.8 8.7 L9 8.7 Z" fill={user.color} stroke="rgba(0,0,0,0.5)" strokeWidth="0.8" />
+          </svg>
+          <div
+            className="absolute top-3 left-2 px-1.5 py-0.5 rounded text-[10px] font-medium text-white whitespace-nowrap shadow-lg"
+            style={{ background: user.color }}
+          >
+            {user.name}
+          </div>
+        </div>
+      ))}
 
       {/* Inline text input */}
       {textInput && (() => {

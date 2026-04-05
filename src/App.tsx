@@ -12,6 +12,7 @@ import { useAuthStore } from './store/useAuthStore'
 import { Tool } from './types'
 import { canUseCloud, loadCloudSnapshot, saveCloudSnapshot } from './lib/cloudBoards'
 import { loadLocalSnapshot, saveLocalSnapshot } from './lib/localBoards'
+import { useCollabStore } from './store/useCollabStore'
 
 const shortcuts: Record<string, Tool> = {
   v: 'select', h: 'pan', i: 'picker', t: 'text', d: 'draw',
@@ -28,6 +29,28 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
   const [isFullscreenMode, setIsFullscreenMode] = useState(false)
   const [cloudReady, setCloudReady] = useState(false)
   const boardRootRef = useRef<HTMLDivElement>(null)
+  const [shareTooltip, setShareTooltip] = useState<string | null>(null)
+  const { active: collabActive, shareCode, startSession, remoteUsers } = useCollabStore()
+
+  const handleShare = async () => {
+    if (collabActive && shareCode) {
+      const url = `${window.location.origin}?join=${shareCode}`
+      await navigator.clipboard.writeText(url).catch(() => undefined)
+      setShareTooltip('Lien copié !')
+      setTimeout(() => setShareTooltip(null), 2000)
+      return
+    }
+    if (!user) return
+    const board = useBoardStore.getState().boards.find((b) => b.id === useBoardStore.getState().activeBoardId)
+    if (!board) return
+    const code = await startSession(user.email, board.id, board.name, board.elements)
+    if (code) {
+      const url = `${window.location.origin}?join=${code}`
+      await navigator.clipboard.writeText(url).catch(() => undefined)
+      setShareTooltip('Lien copié !')
+      setTimeout(() => setShareTooltip(null), 2000)
+    }
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -130,6 +153,43 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
           onGoHome={onGoHome}
           actions={
             <div className="flex items-center gap-1.5">
+
+              {/* Live user avatars */}
+              {collabActive && remoteUsers.length > 0 && (
+                <div className="flex -space-x-1 items-center mr-0.5">
+                  {remoteUsers.map((u) => (
+                    <div key={u.id} title={u.name}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white border border-black/50 select-none"
+                      style={{ background: u.color }}
+                    >
+                      {u.name[0].toUpperCase()}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Share / Live button */}
+              <div className="relative">
+                <button
+                  onClick={() => void handleShare()}
+                  title={collabActive ? 'Copier le lien de partage' : 'Partager ce board'}
+                  className={`px-2.5 h-8 flex items-center gap-1.5 rounded-lg text-[12px] transition-colors font-medium
+                    ${collabActive
+                      ? 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 hover:bg-indigo-500/30'
+                      : 'text-white/30 hover:text-white/60 hover:bg-white/[0.05]'}`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${collabActive ? 'bg-indigo-400 animate-pulse' : 'bg-white/25'}`} />
+                  {collabActive ? 'Live' : 'Share'}
+                </button>
+                {shareTooltip && (
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 whitespace-nowrap px-2.5 py-1 bg-[#111] border border-white/[0.1] rounded-lg text-[11px] text-white/55 z-50 pointer-events-none">
+                    {shareTooltip}
+                  </div>
+                )}
+              </div>
+
+              <div className="w-px h-4 bg-white/[0.07] mx-0.5" />
+
               <div className="relative">
                 <button
                   onClick={() => {
@@ -248,6 +308,11 @@ export default function App() {
   const user = useAuthStore((s) => s.user)
   const init = useAuthStore((s) => s.init)
   const [page, setPage] = useState<'home' | 'workspace' | 'resources'>('home')
+  const [joinCode, setJoinCode] = useState<string | null>(() => new URLSearchParams(window.location.search).get('join'))
+  const [joinName, setJoinName] = useState('')
+  const [joinLoading, setJoinLoading] = useState(false)
+  const { joinSession } = useCollabStore()
+  const hydrateFromSnapshot = useBoardStore((s) => s.hydrateFromSnapshot)
 
   useEffect(() => {
     void init()
@@ -258,6 +323,57 @@ export default function App() {
     if (!user) return
     setPage('home')
   }, [user?.email])
+
+  const handleJoin = async () => {
+    if (!joinCode || !joinName.trim()) return
+    setJoinLoading(true)
+    const defaultName = joinName.trim() || (user?.name ?? 'Guest')
+    const elements = await joinSession(joinCode, defaultName)
+    if (elements !== null) {
+      hydrateFromSnapshot({
+        boards: [{ id: joinCode, name: 'Shared Board', elements }],
+        folders: [],
+        activeBoardId: joinCode,
+      })
+      window.history.replaceState({}, '', window.location.pathname)
+      setJoinCode(null)
+      setPage('workspace')
+    } else {
+      setJoinLoading(false)
+    }
+  }
+
+  if (joinCode) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-canvas text-primary">
+        <div className="w-80 space-y-4">
+          <div className="text-center space-y-1 mb-6">
+            <h1 className="text-2xl font-medium">Join session</h1>
+            <p className="text-muted text-sm">Enter your name to join the collaborative board</p>
+          </div>
+          <input
+            type="text"
+            value={joinName}
+            onChange={(e) => setJoinName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && void handleJoin()}
+            placeholder={user?.name ?? 'Your name'}
+            className="w-full bg-white/[0.04] border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-white/20 transition-colors"
+            autoFocus
+          />
+          <button
+            onClick={() => void handleJoin()}
+            disabled={!joinName.trim() || joinLoading}
+            className="w-full py-2.5 rounded-xl bg-white/[0.08] hover:bg-white/[0.12] text-primary font-medium text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {joinLoading ? 'Joining…' : 'Join board'}
+          </button>
+          <button onClick={() => setJoinCode(null)} className="w-full text-center text-muted text-xs hover:text-dim py-1">
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!user) return <LandingPage />
   if (page === 'workspace') return <BoardApp onGoHome={() => setPage('home')} />
