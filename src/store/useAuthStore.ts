@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { getSupabaseClient, isSupabaseEnabled } from '../lib/supabase'
 
 interface User {
   email: string
@@ -7,13 +8,15 @@ interface User {
 
 interface AuthStore {
   user: User | null
-  login: (email: string, password: string) => boolean
+  login: (email: string, password: string) => Promise<boolean>
   loginGuest: (username: string) => void
-  signup: (email: string, password: string, name: string) => boolean
-  logout: () => void
+  signup: (email: string, password: string, name: string) => Promise<boolean>
+  logout: () => Promise<void>
+  init: () => Promise<void>
 }
 
 const STORAGE_KEY = 'purelike_auth'
+const USERS_KEY = 'purelike_users'
 
 function loadUser(): User | null {
   try {
@@ -27,11 +30,36 @@ function loadUser(): User | null {
 export const useAuthStore = create<AuthStore>((set) => ({
   user: loadUser(),
 
-  login: (email, password) => {
-    const raw = localStorage.getItem(`purelike_users`)
-    const users: Record<string, { password: string; name: string }> = raw
-      ? JSON.parse(raw)
-      : {}
+  init: async () => {
+    if (!isSupabaseEnabled) return
+    const supabase = getSupabaseClient()!
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      const user = {
+        email: session.user.email!,
+        name: (session.user.user_metadata?.name as string) ?? session.user.email!.split('@')[0],
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+      set({ user })
+    }
+  },
+
+  login: async (email, password) => {
+    if (isSupabaseEnabled) {
+      const supabase = getSupabaseClient()!
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error || !data.user) return false
+      const user = {
+        email: data.user.email!,
+        name: (data.user.user_metadata?.name as string) ?? email.split('@')[0],
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+      set({ user })
+      return true
+    }
+    // Fallback local
+    const raw = localStorage.getItem(USERS_KEY)
+    const users: Record<string, { password: string; name: string }> = raw ? JSON.parse(raw) : {}
     const match = users[email.toLowerCase()]
     if (!match || match.password !== password) return false
     const user = { email: email.toLowerCase(), name: match.name }
@@ -46,22 +74,38 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ user })
   },
 
-  signup: (email, password, name) => {
-    const raw = localStorage.getItem(`purelike_users`)
-    const users: Record<string, { password: string; name: string }> = raw
-      ? JSON.parse(raw)
-      : {}
+  signup: async (email, password, name) => {
+    if (isSupabaseEnabled) {
+      const supabase = getSupabaseClient()!
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name } },
+      })
+      if (error || !data.user) return false
+      const user = { email: data.user.email!, name }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+      set({ user })
+      return true
+    }
+    // Fallback local
+    const raw = localStorage.getItem(USERS_KEY)
+    const users: Record<string, { password: string; name: string }> = raw ? JSON.parse(raw) : {}
     const key = email.toLowerCase()
-    if (users[key]) return false // already exists
+    if (users[key]) return false
     users[key] = { password, name }
-    localStorage.setItem(`purelike_users`, JSON.stringify(users))
+    localStorage.setItem(USERS_KEY, JSON.stringify(users))
     const user = { email: key, name }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
     set({ user })
     return true
   },
 
-  logout: () => {
+  logout: async () => {
+    if (isSupabaseEnabled) {
+      const supabase = getSupabaseClient()!
+      await supabase.auth.signOut()
+    }
     localStorage.removeItem(STORAGE_KEY)
     set({ user: null })
   },

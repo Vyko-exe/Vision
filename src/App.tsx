@@ -246,7 +246,13 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
 
 export default function App() {
   const user = useAuthStore((s) => s.user)
+  const init = useAuthStore((s) => s.init)
   const [page, setPage] = useState<'home' | 'workspace' | 'resources'>('home')
+
+  useEffect(() => {
+    void init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     if (!user) return

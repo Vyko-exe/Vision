@@ -18,16 +18,22 @@ export default function LandingPage() {
   const [error, setError] = useState('')
   const [showGuestDialog, setShowGuestDialog] = useState(false)
 
-  const handleSubmit = (e: FormEvent) => {
+  const [loading, setLoading] = useState(false)
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     if (!email.trim() || !password.trim()) { setError('Fill in all fields.'); return }
+    setLoading(true)
     if (mode === 'signup') {
-      if (!name.trim()) { setError('Enter your name.'); return }
-      if (!signup(email, password, name)) setError('This email is already in use.')
+      if (!name.trim()) { setError('Enter your name.'); setLoading(false); return }
+      const ok = await signup(email, password, name)
+      if (!ok) setError('This email is already in use.')
     } else {
-      if (!login(email, password)) setError('Incorrect email or password.')
+      const ok = await login(email, password)
+      if (!ok) setError('Incorrect email or password.')
     }
+    setLoading(false)
   }
 
   const toggle = () => { setMode(m => m === 'login' ? 'signup' : 'login'); setError('') }
@@ -169,11 +175,12 @@ export default function LandingPage() {
 
             <button
               type="submit"
+              disabled={loading}
               className="w-full mt-1 rounded-xl px-4 py-3 text-sm font-semibold text-white transition-all
                 bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.1] hover:border-white/20
-                active:scale-[0.98]"
+                active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {mode === 'login' ? 'Sign in' : 'Create account'}
+              {loading ? '...' : mode === 'login' ? 'Sign in' : 'Create account'}
             </button>
 
             {mode === 'login' && (
