@@ -56,7 +56,7 @@ export default function HomeHubPage({
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="relative z-10 flex items-center justify-between px-8 pt-7 pb-0 flex-shrink-0">
         <span className="text-[11px] font-medium tracking-[0.35em] text-white/20 uppercase select-none">
-          Purelike
+          Vision
         </span>
         <div className="flex items-center gap-4">
           <span className="text-xs text-white/20 hidden sm:inline select-none">{userName}</span>

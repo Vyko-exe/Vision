@@ -56,7 +56,7 @@ export default function LandingPage() {
         {/* Logo */}
         <div className="relative z-10">
           <span className="text-[11px] font-medium tracking-[0.35em] text-white/25 uppercase">
-            Purelike
+            Vision
           </span>
         </div>
 
@@ -98,7 +98,7 @@ export default function LandingPage() {
 
           {/* Mobile logo */}
           <div className="lg:hidden text-center mb-10">
-            <span className="text-[11px] tracking-[0.35em] text-white/25 uppercase">Purelike</span>
+            <span className="text-[11px] tracking-[0.35em] text-white/25 uppercase">Vision</span>
             <h1 className="text-3xl font-bold mt-3 tracking-tight">Your creative space</h1>
           </div>
 

@@ -1,4 +1,4 @@
-# Purelike - Deployment Guide
+# Vision - Deployment Guide
 
 ## Deploy via GitHub + Cloudflare Pages
 
@@ -8,9 +8,9 @@
 # In your project directory
 git init
 git add .
-git commit -m "Initial commit: Purelike app"
+git commit -m "Initial commit: Vision app"
 git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/purelike.git
+git remote add origin https://github.com/YOUR_USERNAME/vision.git
 git push -u origin main
 ```
 
@@ -20,7 +20,7 @@ git push -u origin main
 2. Sign up or log in
 3. Go to **Pages** → **Create a project**
 4. Select **Connect a Git account**
-5. Authorize GitHub and select your `purelike` repo
+5. Authorize GitHub and select your `vision` repo
 6. Click **Begin setup**
 
 ### 3️⃣ Build Configuration
@@ -49,7 +49,7 @@ Every time you push to `main`, GitHub Actions will:
 - Deploy to Cloudflare Pages
 - Your site auto-updates
 
-Your site will be live at: **https://purelike.pages.dev**
+Your site will be live at: **https://vision.pages.dev**
 
 ---
 

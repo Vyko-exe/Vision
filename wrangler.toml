@@ -1,4 +1,4 @@
-name = "purelike"
+name = "vision"
 type = "javascript"
 account_id = ""
 workers_dev = true
@@ -6,7 +6,7 @@ route = ""
 zone_id = ""
 
 [env.production]
-name = "purelike"
+name = "vision"
 
 [[rules]]
 type = "CompiledContentType"

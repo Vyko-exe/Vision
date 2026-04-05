@@ -1137,7 +1137,7 @@ export default function Canvas({ uiHidden = false }: { uiHidden?: boolean }) {
               if (!stage) return
               const dataURL = stage.toDataURL({ pixelRatio: 2 })
               const a = document.createElement('a')
-              a.download = `purelike-board.png`
+              a.download = `vision-board.png`
               a.href = dataURL
               a.click()
             }}

@@ -1,7 +1,7 @@
 @echo off
 cls
 echo ===================================
-echo Purelike - Cloudflare Pages Deploy
+echo Vision - Cloudflare Pages Deploy
 echo ===================================
 echo.
 

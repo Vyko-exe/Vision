@@ -63,7 +63,11 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
       const username = user.email.split('@')[0]
       const snapshot = loadLocalSnapshot(username)
       if (!cancelled && snapshot) {
-        hydrateFromSnapshot(snapshot)
+        hydrateFromSnapshot({
+          boards: snapshot.boards,
+          folders: snapshot.folders,
+          activeBoardId: snapshot.activeBoardId ?? snapshot.boards[0]?.id ?? '1',
+        })
       }
       if (!cancelled) setCloudReady(true)
     }
