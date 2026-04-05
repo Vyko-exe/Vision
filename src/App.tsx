@@ -10,6 +10,7 @@ import LandingPage from './components/LandingPage'
 import { useBoardStore } from './store/useBoardStore'
 import { useAuthStore } from './store/useAuthStore'
 import { Tool } from './types'
+import { canUseCloud, loadCloudSnapshot, saveCloudSnapshot } from './lib/cloudBoards'
 import { loadLocalSnapshot, saveLocalSnapshot } from './lib/localBoards'
 
 const shortcuts: Record<string, Tool> = {
@@ -53,7 +54,7 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
   useEffect(() => {
     let cancelled = false
 
-    const bootLocal = () => {
+    const bootSnapshots = async () => {
       if (!user?.email) {
         if (!cancelled) setCloudReady(true)
         return
@@ -61,19 +62,29 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
 
       // Extract username from email (before @purelike.local)
       const username = user.email.split('@')[0]
-      const snapshot = loadLocalSnapshot(username)
-      if (!cancelled && snapshot) {
+
+      if (canUseCloud()) {
+        const cloud = await loadCloudSnapshot(user.email)
+        if (!cancelled && cloud) {
+          hydrateFromSnapshot(cloud)
+          setCloudReady(true)
+          return
+        }
+      }
+
+      const local = loadLocalSnapshot(username)
+      if (!cancelled && local) {
         hydrateFromSnapshot({
-          boards: snapshot.boards,
-          folders: snapshot.folders,
-          activeBoardId: snapshot.activeBoardId ?? snapshot.boards[0]?.id ?? '1',
+          boards: local.boards,
+          folders: local.folders,
+          activeBoardId: local.activeBoardId ?? local.boards[0]?.id ?? '1',
         })
       }
       if (!cancelled) setCloudReady(true)
     }
 
     setCloudReady(false)
-    bootLocal()
+    bootSnapshots()
     return () => { cancelled = true }
   }, [user?.email, hydrateFromSnapshot])
 
@@ -82,16 +93,27 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
 
     // Extract username from email (before @purelike.local)
     const username = user.email.split('@')[0]
+    let cloudTimer: ReturnType<typeof setTimeout> | null = null
 
     const unsub = useBoardStore.subscribe((state) => {
-      saveLocalSnapshot(username, {
+      const snapshot = {
         boards: state.boards,
         folders: state.folders,
         activeBoardId: state.activeBoardId,
-      })
+      }
+
+      // Keep local fallback for offline usage and guest sessions.
+      saveLocalSnapshot(username, snapshot)
+
+      if (!canUseCloud()) return
+      if (cloudTimer) clearTimeout(cloudTimer)
+      cloudTimer = setTimeout(() => {
+        void saveCloudSnapshot(user.email, snapshot)
+      }, 700)
     })
 
     return () => {
+      if (cloudTimer) clearTimeout(cloudTimer)
       unsub()
     }
   }, [cloudReady, user?.email])
