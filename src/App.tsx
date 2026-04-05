@@ -101,8 +101,6 @@ function BoardApp({ onGoHome }: { onGoHome: () => void }) {
         folders: state.folders,
         activeBoardId: state.activeBoardId,
       }
-
-      // Keep local fallback for offline usage and guest sessions.
       saveLocalSnapshot(username, snapshot)
 
       if (!canUseCloud()) return
